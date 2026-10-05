@@ -1,0 +1,39 @@
+services:
+  sentinelshield:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinelshield-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - JWT_SECRET_KEY=sentinel-shield-ultra-secure-zero-trust-secret-key-2026-xyz
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=phi3:mini
+      - DEFAULT_PROVIDER=simulator
+    depends_on:
+      - ollama
+    networks:
+      - sentinel-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sentinelshield-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - sentinel-net
+
+volumes:
+  ollama_models:
+
+networks:
+  sentinel-net:
+    driver: bridge

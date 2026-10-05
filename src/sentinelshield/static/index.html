@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SentinelShield - Enterprise AI Guardrail & Security Gateway microservice with Zero-Trust PII anonymization and sub-100ms self-healing JSON repair loop.">
+  <title>SentinelShield | Enterprise AI Guardrail & Security Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-background">
+    <div class="mesh-glow mesh-1"></div>
+    <div class="mesh-glow mesh-2"></div>
+    <div class="mesh-glow mesh-3"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title-row">
+            <h1>SentinelShield</h1>
+            <span class="version-tag">v1.0.0</span>
+            <span class="status-pill status-online">
+              <span class="pulse-dot"></span> GATEWAY ACTIVE
+            </span>
+          </div>
+          <p class="brand-subtitle">Silicon Valley AI Guardrail & Inline Security Gateway</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="tier-selector-box">
+          <span class="tier-label">RBAC Tier:</span>
+          <div class="tier-pills" id="tier-pill-selector">
+            <button class="tier-pill" data-tier="guest" id="btn-tier-guest">Guest</button>
+            <button class="tier-pill" data-tier="tier-1" id="btn-tier-1">Tier-1</button>
+            <button class="tier-pill active" data-tier="tier-2" id="btn-tier-2">Tier-2</button>
+            <button class="tier-pill" data-tier="admin" id="btn-tier-admin">Admin</button>
+          </div>
+        </div>
+
+        <div class="quota-badge" id="quota-meter-badge">
+          <span class="quota-icon">⚡</span>
+          <span class="quota-text" id="quota-display">Tokens: 90/min</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs-bar">
+      <div class="tabs-container">
+        <button class="tab-btn active" data-target="tab-playground" id="tab-btn-playground">
+          <span class="tab-icon">⚡</span> Live Guardrail Playground
+        </button>
+        <button class="tab-btn" data-target="tab-self-healing" id="tab-btn-self-healing">
+          <span class="tab-icon">🔄</span> Sub-100ms Self-Healing Lab
+        </button>
+        <button class="tab-btn" data-target="tab-audit" id="tab-btn-audit">
+          <span class="tab-icon">🛡️</span> Security Audit Stream
+        </button>
+        <button class="tab-btn" data-target="tab-schemas" id="tab-btn-schemas">
+          <span class="tab-icon">📐</span> Schema Registry
+        </button>
+        <button class="tab-btn" data-target="tab-architecture" id="tab-btn-architecture">
+          <span class="tab-icon">🏛️</span> Architecture Blueprint
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="main-content">
+    <!-- TAB 1: LIVE PLAYGROUND -->
+    <section class="tab-pane active" id="tab-playground">
+      <div class="playground-grid">
+        <!-- Input & Configuration Column -->
+        <div class="panel-card config-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-indicator"></span>
+              <h2>Client Application Request</h2>
+            </div>
+            <span class="badge-role" id="current-token-badge">JWT: Bearer (tier-2)</span>
+          </div>
+
+          <!-- Quick Scenario Presets -->
+          <div class="presets-section">
+            <label class="section-label">Quick Scenario Presets:</label>
+            <div class="preset-chips">
+              <button class="chip" id="preset-pii-ticket" data-scenario="pii-ticket">
+                🔒 PII Data Leakage (SSN/Email)
+              </button>
+              <button class="chip chip-danger" id="preset-dan-attack" data-scenario="dan-attack">
+                ⚠️ Adversarial DAN Jailbreak
+              </button>
+              <button class="chip chip-warning" id="preset-override-attack" data-scenario="override-attack">
+                🛑 Instruction Override
+              </button>
+              <button class="chip" id="preset-finance" data-scenario="finance">
+                📈 Financial Analysis
+              </button>
+              <button class="chip" id="preset-malformed" data-scenario="malformed">
+                🩹 Malformed JSON Trigger
+              </button>
+            </div>
+          </div>
+
+          <!-- Controls Grid -->
+          <div class="controls-grid">
+            <div class="form-group">
+              <label for="select-schema">Target Schema (Pydantic v2)</label>
+              <select id="select-schema" class="form-select">
+                <option value="CustomerSupportTicket">CustomerSupportTicket</option>
+                <option value="FinancialSentimentReport">FinancialSentimentReport</option>
+                <option value="SecurityVulnerabilityAudit">SecurityVulnerabilityAudit</option>
+                <option value="MedicalTriageSummary">MedicalTriageSummary</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="select-provider">Inference Engine</label>
+              <select id="select-provider" class="form-select">
+                <option value="simulator">Sentinel Simulator (Deterministic)</option>
+                <option value="ollama">Ollama Local (phi3:mini / qwen2.5)</option>
+                <option value="groq">Groq Cloud (Ultra-Fast)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="select-pii-mode">PII Handling Mode</label>
+              <select id="select-pii-mode" class="form-select">
+                <option value="rehydrate">Rehydrate (Zero-Trust De-anonymize)</option>
+                <option value="tokenize">Tokenize (&lt;PII_...&gt; tokens)</option>
+                <option value="redact">Redact ([REDACTED] tokens)</option>
+              </select>
+            </div>
+
+            <div class="form-group checkbox-group">
+              <label class="toggle-container" for="check-simulate-malformed">
+                <input type="checkbox" id="check-simulate-malformed">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Simulate Malformed Model Output</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Prompt Text Area -->
+          <div class="form-group prompt-group">
+            <div class="prompt-header-row">
+              <label for="input-prompt">Raw Client Prompt:</label>
+              <button class="btn-text" id="btn-clear-prompt">Clear</button>
+            </div>
+            <textarea id="input-prompt" rows="5" class="prompt-textarea" placeholder="Enter prompt with sensitive PII or adversarial commands..."></textarea>
+            <div class="textarea-footer">
+              <span class="char-count" id="prompt-char-count">0 characters</span>
+              <span class="pii-hint">Supports SSN, Email, Credit Cards, Phones, IPs, Names</span>
+            </div>
+          </div>
+
+          <!-- Action Button -->
+          <button id="btn-execute-proxy" class="btn-primary-action">
+            <span class="btn-icon">⚡</span>
+            <span class="btn-text">Execute SentinelShield Pipeline</span>
+            <span class="btn-spinner" id="btn-spinner"></span>
+          </button>
+        </div>
+
+        <!-- Output & Pipeline Waterfall Column -->
+        <div class="panel-card results-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-indicator status-ready" id="result-status-indicator"></span>
+              <h2>Inline Gateway Execution Trace</h2>
+            </div>
+            <span class="status-badge" id="overall-status-badge">READY</span>
+          </div>
+
+          <!-- Real-Time Visual Pipeline Stepper -->
+          <div class="pipeline-stepper" id="pipeline-stepper">
+            <div class="step-card" id="step-auth">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-title">JWT Auth & Rate Limit</div>
+                <div class="step-desc" id="step-auth-desc">Tier-2 Token Bucket Validated</div>
+              </div>
+              <div class="step-meta" id="step-auth-time">0.4ms</div>
+            </div>
+
+            <div class="step-card" id="step-injection">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">Injection Scanner</div>
+                <div class="step-desc" id="step-injection-desc">Heuristics & Signatures Clean</div>
+              </div>
+              <div class="step-meta" id="step-injection-time">1.2ms</div>
+            </div>
+
+            <div class="step-card" id="step-pii">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">Zero-Trust PII Masking</div>
+                <div class="step-desc" id="step-pii-desc">In-memory ephemeral tokenization</div>
+              </div>
+              <div class="step-meta" id="step-pii-time">0.8ms</div>
+            </div>
+
+            <div class="step-card" id="step-inference">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">Open Model Inference</div>
+                <div class="step-desc" id="step-inference-desc">Model receives 0 raw PII</div>
+              </div>
+              <div class="step-meta" id="step-inference-time">22.4ms</div>
+            </div>
+
+            <div class="step-card" id="step-validation">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <div class="step-title">Rust Pydantic v2 Core</div>
+                <div class="step-desc" id="step-validation-desc">Strict schema validation</div>
+              </div>
+              <div class="step-meta" id="step-validation-time">0.6ms</div>
+            </div>
+
+            <div class="step-card" id="step-healing">
+              <div class="step-num">6</div>
+              <div class="step-content">
+                <div class="step-title">Self-Healing JSON Loop</div>
+                <div class="step-desc" id="step-healing-desc">Sub-100ms repair re-prompt</div>
+              </div>
+              <div class="step-meta" id="step-healing-time">Sub-100ms</div>
+            </div>
+          </div>
+
+          <!-- Structured Result Tabs -->
+          <div class="result-box-container">
+            <div class="result-box-header">
+              <div class="result-tabs">
+                <button class="subtab-btn active" data-sub="view-json" id="subtab-json">Verified JSON Output</button>
+                <button class="subtab-btn" data-sub="view-pii-map" id="subtab-pii">PII Memory Map</button>
+                <button class="subtab-btn" data-sub="view-healing" id="subtab-healing">Self-Healing Diagnostics</button>
+                <button class="subtab-btn" data-sub="view-latencies" id="subtab-latencies">Latency Waterfall</button>
+              </div>
+              <button class="btn-copy" id="btn-copy-output" title="Copy Output">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg> Copy
+              </button>
+            </div>
+
+            <div class="subtab-content active" id="view-json">
+              <pre class="code-viewer"><code id="code-output-json">// Awaiting pipeline execution...
+// Click "Execute SentinelShield Pipeline" to inspect.</code></pre>
+            </div>
+
+            <div class="subtab-content" id="view-pii-map">
+              <div class="pii-vault-viewer" id="pii-vault-content">
+                <p class="empty-state">No PII tokens active in current request memory context.</p>
+              </div>
+            </div>
+
+            <div class="subtab-content" id="view-healing">
+              <div class="healing-diagnostics-viewer" id="healing-diagnostics-content">
+                <p class="empty-state">No self-healing re-prompt triggered. Output was valid on attempt 1.</p>
+              </div>
+            </div>
+
+            <div class="subtab-content" id="view-latencies">
+              <div class="waterfall-chart" id="waterfall-chart">
+                <div class="waterfall-bar-group">
+                  <span class="waterfall-label">PII Scrub</span>
+                  <div class="waterfall-bar-track"><div class="waterfall-bar bar-pii" style="width: 5%">0.8ms</div></div>
+                </div>
+                <div class="waterfall-bar-group">
+                  <span class="waterfall-label">Injection Scan</span>
+                  <div class="waterfall-bar-track"><div class="waterfall-bar bar-injection" style="width: 8%">1.2ms</div></div>
+                </div>
+                <div class="waterfall-bar-group">
+                  <span class="waterfall-label">LLM Inference</span>
+                  <div class="waterfall-bar-track"><div class="waterfall-bar bar-inference" style="width: 75%">22.4ms</div></div>
+                </div>
+                <div class="waterfall-bar-group">
+                  <span class="waterfall-label">Rust Validation</span>
+                  <div class="waterfall-bar-track"><div class="waterfall-bar bar-validation" style="width: 4%">0.6ms</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: SELF-HEALING JSON LAB -->
+    <section class="tab-pane" id="tab-self-healing">
+      <div class="lab-container">
+        <div class="lab-hero-card">
+          <div class="lab-badge">ENTERPRISE USP</div>
+          <h2>Sub-100ms Self-Healing JSON Repair Loop</h2>
+          <p>
+            When open models (such as <code>phi3:mini</code>, <code>qwen2.5:1.5b</code>, or <code>llama3.2:3b</code>)
+            produce markdown wrappers, drop required fields, or output invalid types, standard applications crash.
+            SentinelShield intercepts the Rust-backed <code>ValidationError</code> in memory, generates a targeted diagnostic
+            diff, and re-prompts the model for an instantaneous sub-100ms correction.
+          </p>
+        </div>
+
+        <div class="lab-interactive-grid">
+          <!-- Step 1: Malformed Output -->
+          <div class="lab-col-card">
+            <div class="lab-col-header">
+              <span class="badge-failure">1. Raw Broken Model Output</span>
+              <span class="lab-chip">Common LLM Failure</span>
+            </div>
+            <pre class="code-snippet-broken"><code>Here is your requested JSON response:
+```json
+{
+  "ticket_id": "TCK-4819",
+  "customer_name": "&lt;PII_NAME_1&gt;",
+  "customer_email": "&lt;PII_EMAIL_1&gt;",
+  "issue_category": "billing",
+  "sentiment": "frustrated",
+  "summary": "Customer experienced billing deduction.",
+  "requires_human_escalation": "yes"  <-- [ERROR: bool required, got str]
+  <-- [ERROR: missing 'action_items' list]
+}
+```
+Hope this helps!</code></pre>
+          </div>
+
+          <!-- Step 2: Precision Re-Prompt -->
+          <div class="lab-col-card">
+            <div class="lab-col-header">
+              <span class="badge-diagnostic">2. Precision Diagnostic Feedback</span>
+              <span class="lab-chip">Rust Pydantic v2 Core</span>
+            </div>
+            <pre class="code-snippet-reprompt"><code>CRITICAL ERROR: Pydantic v2 validation failed.
+Specific Validation Errors:
+- Field 'action_items': Field required
+- Field 'requires_human_escalation': Input should be a valid boolean, unable to interpret 'yes'
+
+Target Pydantic v2 JSON Schema:
+{ ...CustomerSupportTicket schema... }
+
+TASK:
+Fix the errors above and return ONLY the valid JSON object.</code></pre>
+          </div>
+
+          <!-- Step 3: Self-Healed Output -->
+          <div class="lab-col-card">
+            <div class="lab-col-header">
+              <span class="badge-success">3. Self-Healed Strict JSON</span>
+              <span class="lab-chip timer-chip">⚡ Repaired in 24ms</span>
+            </div>
+            <pre class="code-snippet-fixed"><code>{
+  "ticket_id": "TCK-9021",
+  "customer_name": "Jane Miller",
+  "customer_email": "jane.miller@corp.net",
+  "issue_category": "billing",
+  "priority": "high",
+  "sentiment": "frustrated",
+  "summary": "Customer experienced billing deduction.",
+  "action_items": [
+    "Freeze questionable charge authorization",
+    "Verify user multi-factor authentication",
+    "Dispatch automated refund assessment"
+  ],
+  "requires_human_escalation": true
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="lab-trigger-row">
+          <button class="btn-primary-action" id="btn-run-lab-demo">
+            <span>⚡ Test Live Self-Healing Repair Execution</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SECURITY AUDIT STREAM -->
+    <section class="tab-pane" id="tab-audit">
+      <div class="audit-container">
+        <div class="audit-header-card">
+          <div class="audit-metrics-row">
+            <div class="audit-stat">
+              <span class="stat-value" id="stat-total-reqs">0</span>
+              <span class="stat-label">Total Requests</span>
+            </div>
+            <div class="audit-stat">
+              <span class="stat-value text-danger" id="stat-injections-blocked">0</span>
+              <span class="stat-label">Adversarial Blocks</span>
+            </div>
+            <div class="audit-stat">
+              <span class="stat-value text-accent" id="stat-pii-scrubbed">0</span>
+              <span class="stat-label">PII Entities Scrubbed</span>
+            </div>
+            <div class="audit-stat">
+              <span class="stat-value text-warning" id="stat-json-repaired">0</span>
+              <span class="stat-label">Self-Healing Repairs</span>
+            </div>
+            <div class="audit-stat">
+              <span class="stat-value" id="stat-avg-latency">0ms</span>
+              <span class="stat-label">Avg Gateway Latency</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card audit-feed-panel">
+          <div class="panel-header">
+            <h2>Real-Time Security Audit Stream</h2>
+            <button class="btn-secondary" id="btn-refresh-audit">Refresh Feed</button>
+          </div>
+
+          <div class="audit-feed-list" id="audit-feed-list">
+            <div class="audit-item audit-info">
+              <div class="audit-badge">INFO</div>
+              <div class="audit-body">
+                <div class="audit-title">SentinelShield Gateway initialized</div>
+                <div class="audit-details">Loaded 4 Pydantic v2 schemas. Rate limiting active.</div>
+              </div>
+              <div class="audit-time">Just now</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: SCHEMA REGISTRY -->
+    <section class="tab-pane" id="tab-schemas">
+      <div class="schemas-container">
+        <div class="panel-card">
+          <div class="panel-header">
+            <h2>Supported Pydantic v2 Enterprise Schemas</h2>
+            <span class="badge-role">Strict JSON Schema Spec</span>
+          </div>
+          <div class="schema-cards-grid" id="schema-cards-container">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: ARCHITECTURE BLUEPRINT -->
+    <section class="tab-pane" id="tab-architecture">
+      <div class="arch-container">
+        <div class="panel-card arch-card">
+          <div class="panel-header">
+            <h2>Silicon Valley Engineering Architecture Blueprint</h2>
+            <span class="badge-role">Inline Reverse Proxy</span>
+          </div>
+
+          <div class="arch-diagram">
+            <div class="arch-flow">
+              <div class="arch-node node-client">
+                <div class="node-icon">📱</div>
+                <div class="node-title">Client Application</div>
+                <div class="node-sub">Mobile / Web / Agent</div>
+              </div>
+              <div class="arch-arrow">➔</div>
+              <div class="arch-node node-gateway">
+                <div class="node-icon">🛡️</div>
+                <div class="node-title">SentinelShield Perimeter</div>
+                <div class="node-sub">JWT RBAC + Token Bucket</div>
+              </div>
+              <div class="arch-arrow">➔</div>
+              <div class="arch-node node-guardrails">
+                <div class="node-icon">🔍</div>
+                <div class="node-title">Zero-Trust Guardrails</div>
+                <div class="node-sub">In-Memory PII &amp; Injection</div>
+              </div>
+              <div class="arch-arrow">➔</div>
+              <div class="arch-node node-llm">
+                <div class="node-icon">🧠</div>
+                <div class="node-title">Open Model Inference</div>
+                <div class="node-sub">Ollama (phi3/qwen) / Groq</div>
+              </div>
+              <div class="arch-arrow">➔</div>
+              <div class="arch-node node-repair">
+                <div class="node-icon">🔄</div>
+                <div class="node-title">Self-Healing JSON Core</div>
+                <div class="node-sub">Sub-100ms Repair Loop</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="specs-table-wrapper">
+            <table class="specs-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Technology</th>
+                  <th>Engineering Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Package Manager</strong></td>
+                  <td><code>uv</code> (Astral)</td>
+                  <td>10–100x faster than pip/poetry; reproducible builds via <code>uv.lock</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Runtime Engine</strong></td>
+                  <td>Python 3.12+ / FastAPI</td>
+                  <td>Native async loop with high-concurrency AnyIO worker pools.</td>
+                </tr>
+                <tr>
+                  <td><strong>Data Validation</strong></td>
+                  <td>Pydantic v2 (Rust Core)</td>
+                  <td><code>pydantic-core</code> compiled in Rust delivering 20x throughput gains.</td>
+                </tr>
+                <tr>
+                  <td><strong>Auth &amp; RBAC</strong></td>
+                  <td>PyJWT + Bcrypt</td>
+                  <td>Stateless JWT claims with hierarchical role enforcement (guest, tier-1, tier-2, admin).</td>
+                </tr>
+                <tr>
+                  <td><strong>Rate Limiting</strong></td>
+                  <td>Sliding Token Bucket</td>
+                  <td>Non-blocking in-memory token bucket per client IP &amp; tier subscription.</td>
+                </tr>
+                <tr>
+                  <td><strong>Target Inference</strong></td>
+                  <td>Ollama / Groq Open Weights</td>
+                  <td>Runs local quantized models (phi3:mini, qwen2.5:1.5b) with simulator fallback.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-container">
+      <div class="footer-left">
+        <strong>SentinelShield</strong> — Enterprise AI Guardrail Microservice
+      </div>
+      <div class="footer-right">
+        <span>FastAPI + Pydantic v2 + uv</span>
+        <span>•</span>
+        <a href="/docs" target="_blank" class="footer-link">Swagger OpenAPI Specs</a>
+        <span>•</span>
+        <a href="/metrics" target="_blank" class="footer-link">Prometheus Metrics</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
