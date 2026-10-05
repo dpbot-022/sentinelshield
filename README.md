@@ -1,7 +1,7 @@
 # SentinelShield 🛡️
 ### Enterprise AI Guardrail & Security Gateway Microservice
 
-[![CI Pipeline](https://github.com/sentinelshield/sentinelshield/actions/workflows/ci.yml/badge.svg)](https://github.com/sentinelshield/sentinelshield)
+[![CI Pipeline](https://github.com/dpbot-022/sentinelshield/actions/workflows/ci.yml/badge.svg)](https://github.com/dpbot-022/sentinelshield)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/package%20manager-uv-purple.svg)](https://github.com/astral-sh/uv)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
@@ -33,7 +33,7 @@ sequenceDiagram
     participant Detector as Injection Defense Core
     participant LLM as Open LLM (Ollama / Groq)
     participant Core as Rust Pydantic v2 Validator
-    participant Loop as Self-Healing Repair Loop
+    participant Healer as Self-Healing Repair Engine
 
     Client->>Gateway: POST /api/v1/proxy/generate (Prompt + JWT)
     Gateway->>Gateway: Verify JWT & Token-Bucket Quota
@@ -47,8 +47,8 @@ sequenceDiagram
         LLM-->>Core: Raw Model Output
         Core->>Core: Rust-accelerated Schema Validation
         alt Malformed JSON or Missing Field
-            Core->>Loop: Trigger Targeted Diagnostic Feedback
-            Loop->>LLM: Precision Re-Prompt (<100ms repair)
+            Core->>Healer: Trigger Targeted Diagnostic Feedback
+            Healer->>LLM: Precision Re-Prompt (<100ms repair)
             LLM-->>Core: Validated JSON
         end
         Core->>PII: De-anonymize & Rehydrate Verified Fields
@@ -96,7 +96,7 @@ Built natively on Pydantic v2 and `uv`, ensuring high-throughput validation unde
 ### Installation & Run
 ```bash
 # Clone the repository
-git clone https://github.com/sentinelshield/sentinelshield.git
+git clone https://github.com/dpbot-022/sentinelshield.git
 cd sentinelshield
 
 # Sync dependencies with uv (takes under 1 second!)
