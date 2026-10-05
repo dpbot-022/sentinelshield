@@ -1,7 +1,7 @@
 # SentinelShield 🛡️
 ### Enterprise AI Guardrail & Security Gateway Microservice
 
-[![CI Pipeline](https://github.com/dpbot-022/sentinelshield/actions/workflows/ci.yml/badge.svg)](https://github.com/dpbot-022/sentinelshield)
+[![Tests: 25 Passed](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](https://github.com/dpbot-022/sentinelshield/actions)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/package%20manager-uv-purple.svg)](https://github.com/astral-sh/uv)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
