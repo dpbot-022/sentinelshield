@@ -43,6 +43,7 @@ class GroqInferenceProvider(BaseInferenceProvider):
                 {"role": "user", "content": prompt},
             ],
             "temperature": temperature,
+            "max_tokens": 512,
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}

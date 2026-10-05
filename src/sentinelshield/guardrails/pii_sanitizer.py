@@ -39,16 +39,17 @@ class PIIScrubResult(BaseModel):
 
 # Compiled RegEx patterns for Zero-Trust In-Memory Sanitization
 REGEX_PATTERNS = {
-    "SSN": re.compile(r"\b(?!000|666|9\d{2})\d{3}[- ]?(?!00)\d{2}[- ]?(?!0000)\d{4}\b"),
+    # SSN: Standard 3-2-4 format including test and live ranges
+    "SSN": re.compile(r"\b\d{3}[- ]?\d{2}[- ]?\d{4}\b"),
     "EMAIL": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     "PHONE": re.compile(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
     "IPV4": re.compile(r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"),
     "CREDIT_CARD": re.compile(r"\b(?:\d{4}[- ]?){3}\d{4}\b|\b\d{15,16}\b"),
+    # Names: Case-insensitive prefix followed strictly by Capitalized Proper Nouns
     "NAME_CONTEXT": re.compile(
-        r"(?:name\s+is\s+|patient:?\s+|customer:?\s+|employee:?\s+|client:?\s+|user:?\s+|mr\.\s+|mrs\.\s+|ms\.\s+|dr\.\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b",
-        re.IGNORECASE,
+        r"(?i:(?:name\s+is\s+|patient:?\s+|customer:?\s+|employee:?\s+|client:?\s+|user:?\s+|mr\.\s+|mrs\.\s+|ms\.\s+|dr\.\s+))([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b"
     ),
-    "MRN": re.compile(r"\b(?:MRN|MED-ID|PATIENT-ID)[#:\s]+([A-Z0-9]{6,10})\b", re.IGNORECASE),
+    "MRN": re.compile(r"(?i:(?:MRN|MED-ID|PATIENT-ID)[#:\s]+)([A-Z0-9]{6,10})\b"),
 }
 
 
@@ -178,8 +179,16 @@ class PIISanitizer:
             return {k: self.rehydrate(v, token_map) for k, v in data.items()}
         elif isinstance(data, list):
             return [self.rehydrate(item, token_map) for item in data]
-        else:
-            return data
+    def get_redaction_map(self, token_map: Dict[str, str]) -> Dict[str, str]:
+        """Convert <PII_TYPE_N> tokens to [REDACTED_TYPE] without truncating multi-word types"""
+        redact_map = {}
+        for token in token_map:
+            m = re.match(r"<PII_([A-Z0-9_]+)_\d+>", token)
+            if m:
+                redact_map[token] = f"[REDACTED_{m.group(1)}]"
+            else:
+                redact_map[token] = "[REDACTED]"
+        return redact_map
 
 
 pii_engine = PIISanitizer()

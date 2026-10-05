@@ -1,10 +1,41 @@
-# Python-generated files
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+.eggs/
 
 # Virtual environments
-.venv
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sensitive environment files & secrets
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases & logs
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+sentinelshield.db
+*.log
+
+# OS & Editor files
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db

@@ -1,5 +1,6 @@
 import time
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -15,7 +16,16 @@ from sentinelshield.auth.jwt_handler import (
     get_current_user_optional,
     require_tier,
 )
-from sentinelshield.auth.users import authenticate_user, USERS_DB
+from sentinelshield.auth.users import authenticate_user
+from sentinelshield.db import (
+    init_db,
+    create_user,
+    record_audit_event,
+    get_audit_events,
+    clear_audit_events,
+    get_audit_summary,
+    get_user_by_api_key,
+)
 from sentinelshield.ratelimit.token_bucket import rate_limiter
 from sentinelshield.guardrails.injection_scanner import scanner
 from sentinelshield.guardrails.pii_sanitizer import pii_engine
@@ -26,7 +36,7 @@ from sentinelshield.schemas.registry import (
 )
 from sentinelshield.schemas.base_models import (
     TokenRequest,
-    QuickTokenRequest,
+    RegisterRequest,
     TokenResponse,
     GuardrailProxyRequest,
     GuardrailProxyResponse,
@@ -41,10 +51,18 @@ from sentinelshield.repair.self_healing import self_healing_engine
 from sentinelshield.telemetry.metrics import metrics_collector
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize SQLite database on startup
+    init_db()
+    yield
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Enterprise-grade AI Guardrail & Security Gateway microservice with zero-trust PII sanitization and sub-100ms self-healing JSON validation.",
+    description="Enterprise-grade AI Guardrail & Security Gateway microservice with zero-trust PII sanitization and self-healing JSON validation.",
+    lifespan=lifespan,
 )
 
 # CORS Middleware
@@ -73,20 +91,59 @@ async def serve_dashboard():
 
 @app.get("/api/v1/health")
 async def health_check():
+    db_summary = get_audit_summary()
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "providers_available": ["simulator", "ollama", "groq"],
+        "default_provider": settings.DEFAULT_PROVIDER,
+        "groq_model": settings.GROQ_MODEL,
+        "providers_available": ["groq", "ollama", "simulator"],
         "active_schemas": list(SCHEMA_REGISTRY.keys()),
         "uptime_seconds": metrics_collector.get_summary()["uptime_seconds"],
+        "persistent_audit_events": db_summary["total_audit_events"],
     }
 
 
 # ==========================================
 # AUTH & RBAC ENDPOINTS
 # ==========================================
+
+@app.post("/api/v1/auth/register", response_model=TokenResponse)
+async def register_account(request_data: RegisterRequest):
+    """Register a new enterprise user account and receive JWT + API Key"""
+    try:
+        user = create_user(
+            username=request_data.username,
+            email=request_data.email,
+            password=request_data.password,
+            role=request_data.role,
+            tier=request_data.tier,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+
+    claims = {
+        "sub": user["username"],
+        "username": user["username"],
+        "role": user["role"],
+        "tier": user["tier"],
+    }
+    token = create_access_token(claims)
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        expires_in_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user_info={
+            "username": user["username"],
+            "role": user["role"],
+            "tier": user["tier"],
+            "email": user["email"],
+            "api_key": user["api_key"],
+        },
+    )
+
 
 @app.post("/api/v1/auth/token", response_model=TokenResponse)
 async def login_for_access_token(request_data: TokenRequest):
@@ -95,7 +152,7 @@ async def login_for_access_token(request_data: TokenRequest):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password. Check demo credentials.",
+            detail="Incorrect username or password. Check credentials.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -115,30 +172,7 @@ async def login_for_access_token(request_data: TokenRequest):
             "role": user["role"],
             "tier": user["tier"],
             "email": user["email"],
-        },
-    )
-
-
-@app.post("/api/v1/auth/quick-token", response_model=TokenResponse)
-async def quick_token(request_data: QuickTokenRequest):
-    """Generate quick demo tokens for specific tiers (guest, tier-1, tier-2, admin)"""
-    tier = request_data.tier if request_data.tier in settings.RATE_LIMIT_TIERS else "tier-1"
-    claims = {
-        "sub": request_data.username,
-        "username": request_data.username,
-        "role": request_data.role,
-        "tier": tier,
-    }
-    token = create_access_token(claims)
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        expires_in_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user_info={
-            "username": request_data.username,
-            "role": request_data.role,
-            "tier": tier,
-            "demo": True,
+            "api_key": user.get("api_key", ""),
         },
     )
 
@@ -175,12 +209,16 @@ async def list_registered_schemas():
 # ==========================================
 
 def get_inference_provider(provider_type: str, simulate_malformed: bool = False) -> BaseInferenceProvider:
-    if provider_type == "ollama":
-        return OllamaInferenceProvider()
-    elif provider_type == "groq":
+    if provider_type == "groq":
         return GroqInferenceProvider()
+    elif provider_type == "ollama":
+        return OllamaInferenceProvider()
+    elif provider_type == "simulator":
+        return SimulatorInferenceProvider(simulate_malformed=simulate_malformed)
     else:
-        # Default or fallback to high-fidelity simulator
+        # Fall back to settings default provider
+        if settings.DEFAULT_PROVIDER == "groq":
+            return GroqInferenceProvider()
         return SimulatorInferenceProvider(simulate_malformed=simulate_malformed)
 
 
@@ -196,11 +234,11 @@ async def proxy_generate(
     1. Authenticates & enforces sliding window token bucket rate limit per user tier
     2. Scans for adversarial prompt injections / jailbreaks
     3. Scrubs PII strictly in-memory into bidirectional ephemeral tokens
-    4. Executes inference via target provider (Ollama / Groq / Simulator)
+    4. Executes real inference via target provider (Groq / Ollama / Simulator)
     5. Validates output with Pydantic v2 Rust core
-    6. Intercepts failures with Sub-100ms Self-Healing JSON Repair Loop
+    6. Intercepts failures with Self-Healing JSON Repair Loop
     7. Rehydrates PII safely on response for authorized caller
-    8. Records observability metrics
+    8. Records observability metrics to SQLite
     """
     t_start = time.perf_counter()
     latencies = LatencyBreakdown()
@@ -208,13 +246,13 @@ async def proxy_generate(
     user_tier = current_user.get("tier", "guest")
     user_id = current_user.get("username", "guest")
 
-    # Step 1 & 2: Rate Limiting Enforcement
+    # Step 1: Rate Limiting Enforcement
     t_rate_start = time.perf_counter()
     try:
         await rate_limiter.check_rate_limit(request, user_tier=user_tier, user_id=user_id)
     except HTTPException as e:
         metrics_collector.rate_limit_exceeded += 1
-        metrics_collector.record_event(
+        record_audit_event(
             event_type="RATE_LIMIT_HIT",
             severity="WARNING",
             user_tier=user_tier,
@@ -229,14 +267,14 @@ async def proxy_generate(
         response.headers["X-RateLimit-Remaining"] = request.state.ratelimit_remaining
         response.headers["X-RateLimit-Reset"] = request.state.ratelimit_reset
 
-    # Step 3: Prompt Injection & Jailbreak Defense
+    # Step 2: Prompt Injection & Jailbreak Defense
     t_inject_start = time.perf_counter()
     scan_verdict = scanner.scan(proxy_request.prompt)
     latencies.injection_scan_ms = round((time.perf_counter() - t_inject_start) * 1000.0, 2)
 
     if not scan_verdict.is_safe:
         metrics_collector.blocked_injections += 1
-        metrics_collector.record_event(
+        record_audit_event(
             event_type="INJECTION_BLOCKED",
             severity="CRITICAL",
             user_tier=user_tier,
@@ -255,18 +293,21 @@ async def proxy_generate(
             security_verdict=f"BLOCKED: {scan_verdict.reason}",
             threat_details=scan_verdict,
             pii_summary={"sanitized": False, "entities_detected": {}},
-            self_healing=SelfHealingReport(required=False, attempts=0, repaired=False, sub_100ms_achieved=True),
+            self_healing=SelfHealingReport(required=False, attempts=0, repaired=False, sub_100ms_achieved=False),
             latencies=latencies,
             model_used=proxy_request.model or proxy_request.provider,
+            raw_prompt_received=proxy_request.prompt,
+            sanitized_prompt_sent_to_model="[BLOCKED_BEFORE_PII_PROCESSING]",
+            raw_model_response=None,
         )
 
-    # Step 4: Zero-Trust In-Memory PII Sanitization
+    # Step 3: Zero-Trust In-Memory PII Sanitization
     t_pii_start = time.perf_counter()
     scrub_result = pii_engine.sanitize(proxy_request.prompt, mode="tokenize")
     latencies.pii_scrub_ms = round((time.perf_counter() - t_pii_start) * 1000.0, 2)
 
     if scrub_result.pii_found:
-        metrics_collector.record_event(
+        record_audit_event(
             event_type="PII_SCRUBBED",
             severity="INFO",
             user_tier=user_tier,
@@ -277,46 +318,61 @@ async def proxy_generate(
             },
         )
 
-    # Step 5: Resolve Target Pydantic v2 Schema
+    # Step 4: Resolve Target Pydantic v2 Schema
     try:
         target_model = get_schema_model(proxy_request.target_schema)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
 
+    schema_json_str = target_model.model_json_schema()
     system_instruction = (
         f"You are SentinelShield's structured data intelligence core. "
-        f"Analyze the user input and produce output adhering strictly to the JSON schema for '{proxy_request.target_schema}'. "
-        f"Output ONLY valid JSON. Keep any <PII_...> tokens intact in appropriate fields."
+        f"Analyze the user input and produce output adhering strictly to the JSON schema for '{proxy_request.target_schema}':\n"
+        f"{schema_json_str}\n"
+        f"Output ONLY the valid JSON object. Do not include markdown fences, comments, or extra text. "
+        f"Preserve all <PII_...> tokens exactly as written in appropriate fields."
     )
 
-    # Step 6: Upstream LLM Inference
+    # Step 5: Upstream LLM Inference
     t_infer_start = time.perf_counter()
     provider = get_inference_provider(
         proxy_request.provider, simulate_malformed=proxy_request.simulate_malformed
     )
 
-    try:
-        raw_llm_response = await provider.generate(
-            prompt=scrub_result.sanitized_text,
-            system_prompt=system_instruction,
-            json_mode=True,
-            temperature=proxy_request.temperature,
-            model=proxy_request.model,
-        )
-    except Exception as e:
-        # Fallback to simulator if Ollama/Groq connection fails
-        provider = SimulatorInferenceProvider(simulate_malformed=proxy_request.simulate_malformed)
-        raw_llm_response = await provider.generate(
-            prompt=scrub_result.sanitized_text,
-            system_prompt=system_instruction,
-            json_mode=True,
-            temperature=proxy_request.temperature,
-            model=proxy_request.model,
-        )
+    if proxy_request.simulate_malformed:
+        # Intentionally produce a malformed output on attempt 1 to test and demonstrate the real self-healing repair loop
+        name_val = next((t for t in scrub_result.token_map if "NAME" in t), "<PII_NAME_1>")
+        email_val = next((t for t in scrub_result.token_map if "EMAIL" in t), "<PII_EMAIL_1>")
+        raw_llm_response = f"""```json
+{{
+    "ticket_id": "TCK-4819",
+    "customer_name": "{name_val}",
+    "customer_email": "{email_val}",
+    "issue_category": "billing",
+    "sentiment": "frustrated",
+    "summary": "{scrub_result.sanitized_text[:60]}",
+    "requires_human_escalation": "yes"
+}}
+```"""
+        latencies.llm_inference_ms = 8.5
+    else:
+        try:
+            raw_llm_response = await provider.generate(
+                prompt=scrub_result.sanitized_text,
+                system_prompt=system_instruction,
+                json_mode=True,
+                temperature=proxy_request.temperature,
+                model=proxy_request.model,
+            )
+        except Exception as e:
+            # Report honest error to caller; DO NOT silently fake responses!
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Inference provider '{proxy_request.provider}' failure: {str(e)}",
+            )
+        latencies.llm_inference_ms = round((time.perf_counter() - t_infer_start) * 1000.0, 2)
 
-    latencies.llm_inference_ms = round((time.perf_counter() - t_infer_start) * 1000.0, 2)
-
-    # Step 7: Sub-100ms Self-Healing JSON Repair Loop
+    # Step 6: Real Self-Healing JSON Repair Loop
     t_heal_start = time.perf_counter()
     validated_instance, healing_report = await self_healing_engine.validate_and_heal(
         raw_output=raw_llm_response,
@@ -329,26 +385,57 @@ async def proxy_generate(
     latencies.self_healing_ms = healing_duration_ms
 
     if healing_report.required:
-        metrics_collector.record_event(
-            event_type="JSON_REPAIRED",
-            severity="WARNING",
+        record_audit_event(
+            event_type="JSON_REPAIRED" if healing_report.repaired else "JSON_REPAIR_FAILED",
+            severity="INFO" if healing_report.repaired else "HIGH",
             user_tier=user_tier,
             details={
                 "attempts": healing_report.attempts,
+                "repaired": healing_report.repaired,
                 "initial_errors": healing_report.initial_errors,
                 "repair_time_ms": healing_report.repair_time_ms,
                 "schema": proxy_request.target_schema,
             },
         )
 
-    # Step 8: Zero-Trust PII Rehydration or Redaction
+    # If the model could not be healed even after retries, return an honest REPAIR_FAILED response
+    if validated_instance is None:
+        latencies.total_pipeline_ms = round((time.perf_counter() - t_start) * 1000.0, 2)
+        metrics_collector.record_request_metrics(
+            status="REPAIR_FAILED",
+            latency_ms=latencies.total_pipeline_ms,
+            pii_count=len(scrub_result.token_map),
+            repaired=False,
+        )
+        return GuardrailProxyResponse(
+            status="REPAIR_FAILED",
+            structured_data=None,
+            security_verdict=f"REPAIR FAILED: Model output failed strict schema validation after {healing_report.attempts} attempts.",
+            threat_details=scan_verdict,
+            pii_summary={
+                "sanitized": scrub_result.pii_found,
+                "entities_detected": scrub_result.entities_detected,
+                "token_count": len(scrub_result.token_map),
+                "mode_applied": proxy_request.pii_mode,
+            },
+            self_healing=healing_report,
+            latencies=latencies,
+            model_used=proxy_request.model or (
+                settings.GROQ_MODEL if proxy_request.provider == "groq" else proxy_request.provider
+            ),
+            raw_prompt_received=proxy_request.prompt,
+            sanitized_prompt_sent_to_model=scrub_result.sanitized_text,
+            raw_model_response=raw_llm_response,
+        )
+
+    # Step 7: Zero-Trust PII Rehydration or Redaction
     t_rehydrate_start = time.perf_counter()
     raw_data_dict = validated_instance.model_dump()
 
     if proxy_request.pii_mode == "rehydrate" and scrub_result.pii_found:
         final_data = pii_engine.rehydrate(raw_data_dict, scrub_result.token_map)
     elif proxy_request.pii_mode == "redact" and scrub_result.pii_found:
-        redact_map = {token: f"[REDACTED_{token.split('_')[1]}]" for token in scrub_result.token_map}
+        redact_map = pii_engine.get_redaction_map(scrub_result.token_map)
         final_data = pii_engine.rehydrate(raw_data_dict, redact_map)
     else:
         final_data = raw_data_dict
@@ -364,6 +451,12 @@ async def proxy_generate(
         repaired=healing_report.required,
     )
 
+    resolved_model_name = proxy_request.model or (
+        f"groq/{settings.GROQ_MODEL}" if proxy_request.provider == "groq" else (
+            f"ollama/{settings.OLLAMA_MODEL}" if proxy_request.provider == "ollama" else "sentinel-simulator-v2"
+        )
+    )
+
     return GuardrailProxyResponse(
         status=overall_status,
         structured_data=final_data,
@@ -377,9 +470,10 @@ async def proxy_generate(
         },
         self_healing=healing_report,
         latencies=latencies,
-        model_used=proxy_request.model or (
-            "phi3:mini (local)" if proxy_request.provider == "ollama" else "sentinel-simulator-v2"
-        ),
+        model_used=resolved_model_name,
+        raw_prompt_received=proxy_request.prompt,
+        sanitized_prompt_sent_to_model=scrub_result.sanitized_text,
+        raw_model_response=raw_llm_response,
     )
 
 
@@ -389,14 +483,24 @@ async def proxy_generate(
 
 @app.get("/api/v1/telemetry/events")
 async def get_security_audit_events(limit: int = 50):
-    """Retrieve security audit events in reverse chronological order"""
-    return metrics_collector.get_recent_events(limit=limit)
+    """Retrieve security audit events from SQLite persistent database"""
+    return get_audit_events(limit=limit)
+
+
+@app.delete("/api/v1/telemetry/events")
+async def clear_security_audit_events_endpoint():
+    """Clear audit events from SQLite (for testing and demo resets)"""
+    clear_audit_events()
+    return {"message": "Audit events cleared successfully"}
 
 
 @app.get("/api/v1/telemetry/metrics")
 async def get_metrics_summary():
     """Retrieve high-level gateway telemetry and KPIs"""
-    return metrics_collector.get_summary()
+    summary = metrics_collector.get_summary()
+    db_summary = get_audit_summary()
+    summary.update(db_summary)
+    return summary
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

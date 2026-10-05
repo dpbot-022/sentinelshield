@@ -11,12 +11,10 @@ from sentinelshield.inference.base import BaseInferenceProvider
 def extract_json_from_text(text: str) -> str:
     """Extract raw JSON string from markdown code blocks or surrounding text"""
     text = text.strip()
-    # Check for markdown code fences ```json ... ``` or ``` ... ```
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
     if match:
         return match.group(1).strip()
-    
-    # Check for outer curly braces
+
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -26,17 +24,16 @@ def extract_json_from_text(text: str) -> str:
 
 
 def clean_json_syntax(text: str) -> str:
-    """Fix common minor JSON syntax errors like trailing commas before closing braces"""
-    # Remove trailing commas before } or ]
-    text = re.sub(r",\s*([\]}])", r"\1", text)
-    return text
+    """Fix minor JSON syntax errors like trailing commas before closing braces"""
+    return re.sub(r",\s*([\]}])", r"\1", text)
 
 
 class SelfHealingRepairEngine:
     """
-    Sub-100ms Self-Healing JSON Repair Loop powered by Pydantic v2 Rust core.
+    Real Self-Healing JSON Repair Loop powered by Pydantic v2 Rust validation core.
     Intercepts JSONDecodeError and pydantic.ValidationError, creates targeted
-    diagnostic feedback, re-prompts the model, and guarantees structural integrity.
+    diagnostic feedback, re-prompts the model, and verifies compliance.
+    Does NOT hallucinate or fake data.
     """
 
     def __init__(self, max_retries: int = 3):
@@ -49,14 +46,14 @@ class SelfHealingRepairEngine:
         inference_provider: BaseInferenceProvider,
         system_prompt: str,
         model_name: Optional[str] = None,
-    ) -> Tuple[BaseModel, SelfHealingReport]:
+    ) -> Tuple[Optional[BaseModel], SelfHealingReport]:
         start_time = time.perf_counter()
         current_raw = raw_output
         report = SelfHealingReport(
             required=False,
             attempts=1,
             repaired=False,
-            sub_100ms_achieved=True,
+            sub_100ms_achieved=False,
             initial_errors=[],
             re_prompt_sent=None,
             repair_time_ms=0.0,
@@ -67,7 +64,7 @@ class SelfHealingRepairEngine:
             extracted_json = extract_json_from_text(current_raw)
             cleaned_json = clean_json_syntax(extracted_json)
 
-            # Step 1: Attempt JSON deserialization
+            # Step 1: Attempt JSON parsing
             parsed_dict = None
             try:
                 parsed_dict = json.loads(cleaned_json)
@@ -77,10 +74,9 @@ class SelfHealingRepairEngine:
                 if attempt == 1:
                     report.initial_errors.append(err_msg)
 
-            # Step 2: Attempt Rust-accelerated Pydantic v2 validation
+            # Step 2: Attempt Rust Pydantic v2 validation
             if parsed_dict is not None:
                 try:
-                    # Fast Pydantic v2 core validation
                     instance = target_model.model_validate(parsed_dict)
                     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
                     report.repair_time_ms = round(elapsed_ms, 2)
@@ -96,28 +92,28 @@ class SelfHealingRepairEngine:
                         if attempt == 1:
                             report.initial_errors.append(field_err)
 
-            # Step 3: If validation failed, construct precision re-prompt
-            schema_json = json.dumps(target_model.model_json_schema(), indent=2)
-            errors_summary = "\n".join(f"- {e}" for e in (report.initial_errors or ["Malformed JSON syntax"]))
+            # Step 3: If validation failed and retries remain, construct precision re-prompt
+            if attempt < self.max_retries:
+                schema_json = json.dumps(target_model.model_json_schema(), indent=2)
+                errors_summary = "\n".join(f"- {e}" for e in (report.initial_errors or ["Malformed JSON syntax"]))
 
-            reprompt_message = f"""CRITICAL ERROR: Pydantic v2 validation failed on your previous output.
+                reprompt_message = f"""CRITICAL ERROR: Your previous JSON output failed Pydantic v2 validation.
 Specific Validation Errors:
 {errors_summary}
 
 Target Pydantic v2 JSON Schema:
 {schema_json}
 
-Your previous malformed output was:
+Your previous output was:
 {current_raw}
 
 TASK:
-Fix the schema validation errors above and return ONLY the valid JSON object.
-Do NOT include markdown fences, backticks, or conversational text. Return only the raw JSON."""
+Fix the schema validation errors listed above.
+Respond ONLY with the corrected valid JSON object. Do not include markdown codeblocks, explanations, or preamble. Return strictly the raw JSON object."""
 
-            report.re_prompt_sent = reprompt_message
+                report.re_prompt_sent = reprompt_message
 
-            # Step 4: Re-prompt model if retries remain
-            if attempt < self.max_retries:
+                # Execute real re-prompt against the model
                 current_raw = await inference_provider.generate(
                     prompt=reprompt_message,
                     system_prompt=system_prompt,
@@ -126,57 +122,12 @@ Do NOT include markdown fences, backticks, or conversational text. Return only t
                     model=model_name,
                 )
 
-        # Step 5: Ultimate Fallback - Deterministic Structural AST repair
-        # If model failed all retries, reconstruct with safe schema defaults
-        instance = self._emergency_structural_repair(current_raw, target_model)
+        # If all retries failed, return None for instance and report failure
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         report.repair_time_ms = round(elapsed_ms, 2)
-        report.repaired = True
-        report.sub_100ms_achieved = elapsed_ms < 100.0
-        return instance, report
-
-    def _emergency_structural_repair(self, raw_text: str, target_model: Type[BaseModel]) -> BaseModel:
-        """Construct fallback instance preserving any extractable fields"""
-        data: Dict[str, Any] = {}
-        try:
-            extracted = extract_json_from_text(raw_text)
-            cleaned = clean_json_syntax(extracted)
-            data = json.loads(cleaned)
-        except Exception:
-            data = {}
-
-        # Fill in required defaults based on model schema fields
-        for name, field in target_model.model_fields.items():
-            if name not in data or data[name] is None:
-                # Provide safe type-appropriate defaults
-                annotation = str(field.annotation)
-                if "int" in annotation:
-                    data[name] = 1
-                elif "float" in annotation:
-                    data[name] = 0.5
-                elif "bool" in annotation:
-                    data[name] = False
-                elif "list" in annotation.lower():
-                    data[name] = ["General remediation and automated monitoring"]
-                elif "dict" in annotation.lower():
-                    data[name] = {"info": "recovered"}
-                else:
-                    data[name] = f"Auto-repaired entry for {name}"
-            # Type coercions
-            elif "int" in str(field.annotation) and isinstance(data[name], str):
-                try:
-                    data[name] = int(data[name])
-                except ValueError:
-                    data[name] = 1
-            elif "float" in str(field.annotation) and isinstance(data[name], str):
-                try:
-                    data[name] = float(data[name])
-                except ValueError:
-                    data[name] = 0.5
-            elif "bool" in str(field.annotation) and isinstance(data[name], str):
-                data[name] = data[name].lower() in ["true", "yes", "1"]
-
-        return target_model.model_validate(data)
+        report.repaired = False
+        report.sub_100ms_achieved = False
+        return None, report
 
 
 self_healing_engine = SelfHealingRepairEngine()

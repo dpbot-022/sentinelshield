@@ -58,9 +58,9 @@ sequenceDiagram
 
 ---
 
-## 2. Silicon Valley Production Tech Stack
+## 2. Production Enterprise Tech Stack
 
-| Layer | Tool / Technology | Silicon Valley Engineering Justification |
+| Layer | Tool / Technology | Engineering Justification |
 | :--- | :--- | :--- |
 | **Package Manager** | `uv` (by Astral) | 10–100x faster than pip/poetry. Guarantees deterministic, reproducible builds via `uv.lock`. |
 | **Runtime Engine** | Python 3.12+ / FastAPI | Native asyncio loop with AnyIO support; auto-generates interactive OpenAPI specs. |

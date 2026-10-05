@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from sentinelshield.config import settings
@@ -58,42 +58,81 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
 ) -> Dict[str, Any]:
+    # Check X-API-Key header first
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        try:
+            from sentinelshield.db import get_user_by_api_key
+            user = get_user_by_api_key(api_key)
+            if user:
+                return {
+                    "sub": user["username"],
+                    "username": user["username"],
+                    "role": user["role"],
+                    "tier": user["tier"],
+                    "auth_method": "api_key",
+                }
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid X-API-Key provided.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization Header. Bearer token required for enterprise inference.",
+            detail="Missing Authorization Header. Bearer JWT token or X-API-Key required.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
     payload = decode_access_token(token)
+    payload["auth_method"] = "jwt"
     return payload
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
 ) -> Dict[str, Any]:
-    if not credentials:
-        # Default unauthenticated guest context
-        return {
-            "sub": "anonymous-guest",
-            "username": "guest",
-            "role": "guest",
-            "tier": "guest",
-            "is_guest": True,
-        }
-    try:
-        return decode_access_token(credentials.credentials)
-    except HTTPException:
-        # Fallback to guest if invalid token passed to optional endpoint
-        return {
-            "sub": "anonymous-guest",
-            "username": "guest",
-            "role": "guest",
-            "tier": "guest",
-            "is_guest": True,
-        }
+    # Check X-API-Key header
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        try:
+            from sentinelshield.db import get_user_by_api_key
+            user = get_user_by_api_key(api_key)
+            if user:
+                return {
+                    "sub": user["username"],
+                    "username": user["username"],
+                    "role": user["role"],
+                    "tier": user["tier"],
+                    "auth_method": "api_key",
+                }
+        except Exception:
+            pass
+
+    if credentials:
+        try:
+            payload = decode_access_token(credentials.credentials)
+            payload["auth_method"] = "jwt"
+            return payload
+        except HTTPException:
+            pass
+
+    # Default unauthenticated guest context
+    return {
+        "sub": "anonymous-guest",
+        "username": "guest",
+        "role": "guest",
+        "tier": "guest",
+        "is_guest": True,
+        "auth_method": "none",
+    }
 
 
 def require_tier(minimum_tier: str):

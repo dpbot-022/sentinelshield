@@ -31,12 +31,13 @@ class Settings(BaseSettings):
     }
 
     # Inference Providers
-    DEFAULT_PROVIDER: str = "simulator"  # "simulator", "ollama", "groq"
+    DEFAULT_PROVIDER: str = "groq"  # "groq", "ollama", "simulator"
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", description="Ollama local endpoint")
     OLLAMA_MODEL: str = Field(default="phi3:mini", description="Ollama target model name")
     GROQ_BASE_URL: str = Field(default="https://api.groq.com/openai/v1", description="Groq API base URL")
     GROQ_API_KEY: str = Field(default="", description="Groq API key")
-    GROQ_MODEL: str = Field(default="llama-3.1-8b-instant", description="Groq model name")
+    GROQ_MODEL: str = Field(default="qwen/qwen3.8-27b", description="Groq model name")
+    DATABASE_PATH: str = Field(default="sentinelshield.db", description="SQLite database file path")
 
     # Guardrail Controls
     PROMPT_INJECTION_THRESHOLD: float = Field(

@@ -8,10 +8,12 @@ class TokenRequest(BaseModel):
     password: str
 
 
-class QuickTokenRequest(BaseModel):
-    username: str = "developer"
-    role: str = "developer"
-    tier: str = "tier-2"
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    email: str = Field(..., min_length=5, max_length=100)
+    password: str = Field(..., min_length=6)
+    role: str = Field(default="developer")
+    tier: str = Field(default="tier-1")
 
 
 class TokenResponse(BaseModel):
@@ -33,12 +35,12 @@ class GuardrailProxyRequest(BaseModel):
         description="Target Pydantic v2 schema for structured response compliance",
     )
     provider: str = Field(
-        default="simulator",
-        description="Inference provider: 'simulator', 'ollama', or 'groq'",
+        default="groq",
+        description="Inference provider: 'groq', 'ollama', or 'simulator'",
     )
     model: Optional[str] = Field(
         default=None,
-        description="Specific model name (e.g. phi3:mini, qwen2.5:1.5b, llama3.2:3b, llama-3.1-8b-instant)",
+        description="Specific model name (e.g. qwen/qwen3.8-27b, phi3:mini, openai/gpt-oss-20b)",
     )
     pii_mode: str = Field(
         default="rehydrate",
@@ -46,7 +48,7 @@ class GuardrailProxyRequest(BaseModel):
     )
     simulate_malformed: bool = Field(
         default=False,
-        description="Force inference engine to produce malformed JSON to test the Self-Healing Re-Prompting Loop",
+        description="Force inference engine to produce malformed output to test the Self-Healing Re-Prompting Loop",
     )
     temperature: float = Field(default=0.1, ge=0.0, le=1.0)
 
@@ -65,16 +67,16 @@ class LatencyBreakdown(BaseModel):
 
 class SelfHealingReport(BaseModel):
     required: bool = False
-    attempts: int = 0
-    repaired: bool = True
-    sub_100ms_achieved: bool = True
+    attempts: int = 1
+    repaired: bool = False
+    sub_100ms_achieved: bool = False
     initial_errors: List[str] = Field(default_factory=list)
     re_prompt_sent: Optional[str] = None
     repair_time_ms: float = 0.0
 
 
 class GuardrailProxyResponse(BaseModel):
-    status: str = Field(description="'SUCCESS', 'BLOCKED', or 'REPAIRED'")
+    status: str = Field(description="'SUCCESS', 'REPAIRED', 'BLOCKED', 'REPAIR_FAILED', or 'ERROR'")
     structured_data: Optional[Dict[str, Any]] = None
     security_verdict: str
     threat_details: Optional[InjectionScanResult] = None
@@ -82,3 +84,6 @@ class GuardrailProxyResponse(BaseModel):
     self_healing: SelfHealingReport
     latencies: LatencyBreakdown
     model_used: str
+    raw_prompt_received: str
+    sanitized_prompt_sent_to_model: str
+    raw_model_response: Optional[str] = None

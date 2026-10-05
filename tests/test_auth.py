@@ -28,15 +28,25 @@ def test_auth_login_invalid_password(client):
     assert "Incorrect username or password" in response.json()["detail"]
 
 
-def test_quick_token_generation(client):
+def test_user_registration_and_api_key_flow(client):
+    import uuid
+    suffix = uuid.uuid4().hex[:6]
     response = client.post(
-        "/api/v1/auth/quick-token",
-        json={"username": "qa_tester", "role": "developer", "tier": "tier-2"},
+        "/api/v1/auth/register",
+        json={
+            "username": f"qa_{suffix}",
+            "email": f"qa_{suffix}@enterprise.internal",
+            "password": "SecurePassword123!",
+            "role": "developer",
+            "tier": "tier-2",
+        },
     )
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
     assert data["user_info"]["tier"] == "tier-2"
+    assert "api_key" in data["user_info"]
+    assert data["user_info"]["api_key"].startswith("sk_live_")
 
 
 @pytest.mark.asyncio
@@ -58,3 +68,29 @@ async def test_tier_hierarchy_enforcement():
     admin_user = {"sub": "u3", "tier": "admin"}
     res_admin = await checker(admin_user)
     assert res_admin["tier"] == "admin"
+
+
+def test_auth_login_with_gmail_alias(client):
+    response = client.post(
+        "/api/v1/auth/token",
+        json={"username": "developer@gmail.com", "password": "DevSecret2026!"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert data["user_info"]["role"] == "developer"
+    assert data["user_info"]["tier"] == "tier-2"
+
+
+def test_auth_login_with_custom_gmail_jit(client):
+    import uuid
+    random_email = f"lead.ai.{uuid.uuid4().hex[:6]}@gmail.com"
+    response = client.post(
+        "/api/v1/auth/token",
+        json={"username": random_email, "password": "DemoSecurePassword2026!"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert data["user_info"]["email"] == random_email
+    assert data["user_info"]["tier"] == "tier-2"

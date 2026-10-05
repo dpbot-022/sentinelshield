@@ -79,3 +79,11 @@ def test_telemetry_endpoints(client):
     res_prom = client.get("/metrics")
     assert res_prom.status_code == 200
     assert "sentinelshield_requests_total" in res_prom.text
+
+    # Test clear audit events
+    res_del = client.delete("/api/v1/telemetry/events")
+    assert res_del.status_code == 200
+    assert res_del.json()["message"] == "Audit events cleared successfully"
+    res_empty = client.get("/api/v1/telemetry/events")
+    assert res_empty.status_code == 200
+    assert len(res_empty.json()) == 0
